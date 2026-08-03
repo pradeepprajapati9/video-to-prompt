@@ -1,0 +1,26 @@
+[
+  {
+    "project_name": "PMJAY Portal Claim Automation Bot",
+    "summary": "Ek Robotic Process Automation (RPA) bot jo PMJAY Transaction Management System portal par daily patient discharge aur claim submission ke repetitive task ko automate karega, jisme document upload ke liye automatic PDF compression system bhi integrated hoga.",
+    "requirements": [
+      "Secure login aur dashboard navigation automate karna.",
+      "Database ya Excel sheet se Registration ID pick karke portal par patient search karna.",
+      "Patient Discharge form automatic fill karna (Discharge Stage, Dates, times, aur surgery dates enter karna).",
+      "Smart PDF Compression Utility: Har document (Discharge summary, Bill, Photos, Reports) ka size check karna, aur agar woh portal ke limit (>1MB) se bada ho, to use automatically compress/resize karke upload karna.",
+      "Claim Details page par Hospital Bill details (Bill Date, Number, Amount) aur 'Post Operative Investigation' details dynamic fill karna.",
+      "Required documents (Hospital Bill, Clinical Notes, Investigations, Patient Photos) ko unke respective sections me upload karna.",
+      "Submit button click karke confirmation pop-up handle karna aur success status local log me save karna."
+    ],
+    "tech_stack": [
+      "Python",
+      "Selenium or Playwright (for Browser Automation)",
+      "PyMuPDF / PDF-parser (for local PDF manipulation and checking)",
+      "API integration for PDF compression (e.g., iLovePDF API or local ghostscript wrapper)",
+      "Pandas (for reading input data from Excel/CSV)",
+      "Logging & Retry mechanisms (for handling portal timeouts)"
+    ],
+    "ultra_prompt": "You are tasked with building a robust Robotic Process Automation (RPA) Bot using Python and Playwright/Selenium to automate the daily patient discharge and claim submission workflow on the PMJAY (Pradhan Mantri Jan Arogya Yojana) Transaction Management System provider portal.\n\n### Core Objectives:\n1. **Patient Search & Discharge Automation**:\n   - Log in to the provider portal securely.\n   - Search for a specific patient using their 'Registration ID' (e.g., '2026060560020263') from an input CSV/Excel sheet.\n   - Click on the patient card, navigate to 'Discharge' section.\n   - Set Discharge Type to 'Normal Discharge'.\n   - Fill 'Discharge Information': Discharge Stage (e.g., 'After Surgery/Treatment'), Discharge Date & Time, and Surgery/Treatment Date.\n   - Upload required documents: Discharge Summary, Post Surgery Photo, Feedback Form, and Medical Slip.\n\n2. **Smart PDF Compression Sub-System**:\n   - Before uploading any PDF, the bot must check its file size.\n   - If the file is > 1MB (or exceeds portal constraints), the bot should automatically compress the PDF to a safe target size (e.g., ~800KB-1MB) using a local compression library (like Ghostscript/python-pdf-compressor) or a secure compression API (like iLovePDF/PDF7 API) before executing the upload.\n\n3. **Claim Details & Submission Automation**:\n   - Once discharged, search for the patient again in the 'Claims to be submitted' or 'Preauthorization' queue.\n   - Open the claim page, scroll to 'Hospital Bill Details'.\n   - Input 'Bill Date', 'Hospital Bill Number', and 'Hospital Bill Amount'.\n   - Select 'No' for 'Any amount collecting from beneficiary?'.\n   - Upload Hospital Bill, Any other document, Implant Bill Documents, Supporting Documents.\n   - Fill the 'Post Operative Investigation' section, uploading 'Clinical Notes', 'Investigation' documents, and 'Patient Photo'.\n   - Click 'PREVIEW & CLAIM', verify details, click 'SUBMIT CLAIM', and handle the 'YES/NO' confirmation dialog box.\n\n### Error Handling & Reporting:\n- Implement smart waits for slower portal elements and handle recurring popups.\n- Maintain a detailed log file (CSV/JSON) tracking the status of each Registration ID: 'SUCCESS', 'FAILED - [Reason] (e.g., Document Missing, Server Error)', or 'COMPRESSED - [Before Size] to [After Size]'.\n\nGenerate a clean, modular Python codebase with separate files for browser automation (`browser_bot.py`), PDF handling (`pdf_utils.py`), and data mapping (`data_manager.py`).",
+    "saved_at": "2026-07-07T10:50:45",
+    "source_video": "Screen Recording 2026-07-03 095254.mp4"
+  }
+]
