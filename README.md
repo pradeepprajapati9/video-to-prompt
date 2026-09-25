@@ -50,7 +50,8 @@ python bot.py "https://www.youtube.com/watch?v=..." --audience "Client / Busines
 - Videos are sent through the File API at full quality (up to 2 GB) and deleted from Google
   once analysis is done. If the File API is blocked, the app falls back to a compressed
   inline upload (720p, 2 fps).
-- If a model is busy or out of quota, the app automatically tries the next one
-  (`gemini-flash-latest`, then `gemini-2.5-flash`).
+- On the free tier, each model allows about 20 requests per day, and one video uses 2.
+  If a model is busy or out of quota, the app moves to the next one (5 models, each with its
+  own quota), which gives roughly 50 videos per day.
 - On the free tier, Google may use the data you send to improve its products. Do not upload
   videos that contain patient or other confidential data.

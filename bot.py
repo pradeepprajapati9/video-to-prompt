@@ -48,8 +48,10 @@ _load_env()
 
 # ---- Config ----
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
-# if a model is busy (503) or out of quota (429), the next one is tried
-MODELS = [os.environ.get("GEMINI_MODEL", "gemini-flash-latest"), "gemini-2.5-flash"]
+# each model has its own free daily quota; if one is busy (503) or out of quota (429),
+# the next one is tried. Lite models are the last resort (lower quality).
+MODELS = [os.environ.get("GEMINI_MODEL", "gemini-flash-latest"), "gemini-3.5-flash",
+          "gemini-2.5-flash", "gemini-flash-lite-latest", "gemini-2.5-flash-lite"]
 PROJECTS_FILE = os.path.join(os.path.dirname(__file__), "projects.json")
 
 INLINE_LIMIT_MB = 18        # inline request limit is ~20 MB
@@ -159,6 +161,20 @@ def client():
     return _client
 
 
+def _call(model, contents, config):
+    """One model: returns the response, "quota" if its quota is used up, or None if busy."""
+    for _ in range(2):
+        try:
+            return client().models.generate_content(model=model, contents=contents, config=config)
+        except errors.APIError as e:
+            if e.code == 429:       # retrying would only waste more quota
+                return "quota"
+            if e.code not in (500, 503, 504):
+                raise
+            time.sleep(4)
+    return None
+
+
 def _generate(contents, schema=None, temperature=0.2, media_resolution=None):
     """Call with retry + model fallback. Returns a parsed object when a schema is given."""
     config = types.GenerateContentConfig(
@@ -168,24 +184,24 @@ def _generate(contents, schema=None, temperature=0.2, media_resolution=None):
         response_schema=schema,
         media_resolution=media_resolution,
     )
-    last = None
+    quota_hit = False
     for model in MODELS:
-        for attempt in range(2):
-            try:
-                resp = client().models.generate_content(model=model, contents=contents, config=config)
-            except errors.APIError as e:
-                last = e
-                if e.code in (429, 500, 503, 504):
-                    time.sleep(4 * (attempt + 1))
-                    continue
-                raise
-            if not schema:
-                return resp.text
-            if resp.parsed is not None:
-                return resp.parsed
-            reason = resp.candidates[0].finish_reason if resp.candidates else "unknown"
-            raise RuntimeError(f"Incomplete response ({reason}). Try a shorter video.")
-    raise RuntimeError(f"Gemini is busy right now, try again in 1-2 minutes. ({last})")
+        resp = _call(model, contents, config)
+        if resp == "quota":
+            quota_hit = True
+            continue
+        if resp is None:
+            continue
+        if not schema:
+            return resp.text
+        if resp.parsed is not None:
+            return resp.parsed
+        reason = resp.candidates[0].finish_reason if resp.candidates else "unknown"
+        raise RuntimeError(f"Incomplete response ({reason}). Try a shorter video.")
+    if quota_hit:
+        raise RuntimeError("Free Gemini quota is used up on all models for today. "
+                           "It resets daily at around 12:30 PM IST.")
+    raise RuntimeError("Gemini is busy right now, try again in 1-2 minutes.")
 
 
 # ---- Video input ----
