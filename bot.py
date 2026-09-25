@@ -1,18 +1,18 @@
 """
 Video -> Documentation engine (+ CLI)
 -------------------------------------
-Koi bhi video (upload ya YouTube link), kisi bhi bhasha me.
+Any video (upload or YouTube link), in any language.
 
-Do step ka pipeline:
-  1. EXTRACT  - Gemini video ko dekh + sun ke sirf "saboot" nikalta hai:
-                poora transcript (time + speaker) aur screen par jo dikha
-                (text, fields, numbers, code, charts, clicks). Koi raay nahi.
-  2. WRITE    - Us saboot se, chune hue reader (developer / client / manager...)
-                aur bhasha ke hisaab se professional documentation likhta hai.
-                Har zaroori baat ke saath [MM:SS] taaki video me check ho sake.
+Two-step pipeline:
+  1. EXTRACT  - Gemini watches and listens to the video and captures only evidence:
+                the full transcript (time + speaker) and what is shown on screen
+                (text, fields, numbers, code, charts, clicks). No interpretation.
+  2. WRITE    - From that evidence, writes professional documentation for the
+                chosen reader (developer / client / manager...) and language.
+                Every key fact carries [MM:SS] so it can be checked in the video.
 
-Fayda: step 2 sirf text par chalta hai, to dusre reader/bhasha ke liye
-documentation dobara banani ho to video dobara nahi bhejni padti.
+Benefit: step 2 runs on text only, so documentation for another reader or
+language can be regenerated without re-sending the video.
 """
 
 import os
@@ -33,7 +33,7 @@ from google.genai import types, errors
 
 
 def _load_env():
-    """.env file ko bina extra library ke padho."""
+    """Read the .env file without an extra library."""
     path = os.path.join(os.path.dirname(__file__), ".env")
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
@@ -48,15 +48,15 @@ _load_env()
 
 # ---- Config ----
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
-# pehla model busy (503) / quota khatam (429) ho to agla try hota hai
+# if a model is busy (503) or out of quota (429), the next one is tried
 MODELS = [os.environ.get("GEMINI_MODEL", "gemini-flash-latest"), "gemini-2.5-flash"]
 PROJECTS_FILE = os.path.join(os.path.dirname(__file__), "projects.json")
 
-INLINE_LIMIT_MB = 18        # inline request ki limit ~20 MB
-LONG_VIDEO_MIN = 45         # isse lambi video -> low media resolution (token bachane ke liye)
+INLINE_LIMIT_MB = 18        # inline request limit is ~20 MB
+LONG_VIDEO_MIN = 45         # longer videos use low media resolution to save tokens
 
 VIDEO_TYPES = {
-    "auto": "🔍 Auto (khud pehchano)",
+    "auto": "🔍 Auto-detect",
     "project": "💻 Project / requirement",
     "trading": "📈 Trading / finance",
     "tutorial": "🛠️ Tutorial / how-to",
@@ -67,45 +67,45 @@ VIDEO_TYPES = {
 }
 
 AUDIENCES = {
-    "General": "aasaan bhasha, har zaroori baat; na zyada technical na bahut basic",
+    "General": "plain language, every important point; neither too technical nor too basic",
     "Developer": "technical depth: architecture, data model, APIs, validations, edge cases, "
-                 "exact steps/code; jo unclear hai wo open question",
-    "Client / Business owner": "bina jargon ke: kya milega, kya fayda, scope me kya hai aur kya nahi, "
-                               "kya decide/approve karna hai",
-    "Manager / Team lead": "scope, kaam ka breakdown, milestones, dependencies, risks, "
-                           "kis role ko kya karna hai",
-    "Beginner / Student": "bilkul basic se, har term ka matlab, examples ke saath",
-    "Trader / Investor": "exact rules, numbers, levels, risk-reward, kya verify karna hai",
+                 "exact steps/code; anything unclear becomes an open question",
+    "Client / Business owner": "no jargon: what they get, the benefit, what is in and out of scope, "
+                               "what they need to decide or approve",
+    "Manager / Team lead": "scope, work breakdown, milestones, dependencies, risks, "
+                           "who (which role) does what",
+    "Beginner / Student": "start from the basics, explain every term, use examples",
+    "Trader / Investor": "exact rules, numbers, levels, risk-reward, what needs verifying",
 }
 
-LANGUAGES = ["Hinglish", "Hindi", "English", "Marathi", "Gujarati", "Bengali", "Tamil",
+LANGUAGES = ["English", "Hindi", "Hinglish", "Marathi", "Gujarati", "Bengali", "Tamil",
              "Telugu", "Kannada", "Malayalam", "Punjabi", "Urdu", "Spanish", "French", "Arabic"]
 
-# har video type ki documentation me ye sections
+# documentation sections for each video type
 TYPE_GUIDE = {
     "project": "Overview; Problem / goal; Users & roles; Functional requirements (numbered, "
-               "har ek testable, jaha video me dikha wo [MM:SS]); Screens / UI flow (step by step, "
+               "each one testable, with [MM:SS] where shown); Screens / UI flow (step by step, "
                "field names exact); Business rules & validations; Data model (table: entity, fields); "
                "Integrations / APIs; Non-functional (security, performance, privacy); "
                "Suggested tech stack (suggestion); Milestones; Acceptance criteria; Out of scope",
-    "trading": "Market / instrument; Strategy ka core idea; Timeframe; Indicators & settings; "
+    "trading": "Market / instrument; Core idea of the strategy; Timeframe; Indicators & settings; "
                "Entry rules (exact conditions); Exit rules (target, stop loss, trailing); "
-               "Position sizing & risk; Video ke examples (table: time, instrument, entry, SL, target, "
-               "result); Kab kaam nahi karegi; Claims jo backtest/verify karne chahiye. "
-               "Aakhir me line: 'Ye video ke claims hain, financial advice nahi.'",
-    "tutorial": "Kya banega / seekhenge; Prerequisites (versions); Step-by-step (numbered; exact "
-                "commands, code, settings, menu path); Verify kaise kare; Common errors & fix; Next steps",
-    "lecture": "Topics; Har concept ki explanation; Definitions & formulas; Examples; "
-               "Summary; 5 revision questions (answers ke saath)",
+               "Position sizing & risk; Examples from the video (table: time, instrument, entry, SL, target, "
+               "result); When it will not work; Claims to backtest/verify. "
+               "End with: 'These are the video's claims, not financial advice.'",
+    "tutorial": "What you will build / learn; Prerequisites (versions); Step-by-step (numbered; exact "
+                "commands, code, settings, menu path); How to verify; Common errors & fixes; Next steps",
+    "lecture": "Topics; Explanation of each concept; Definitions & formulas; Examples; "
+               "Summary; 5 revision questions (with answers)",
     "meeting": "Participants; Agenda; Discussion (topic-wise); Decisions; "
-               "Action items (table: kaun, kya, kab); Open issues",
-    "review": "Product; Features; Pros; Cons; Price / offers; Kiske liye sahi; Verdict; "
-              "Claims jo verify karne chahiye",
-    "other": "Video ke hisaab se jo sections sabse useful hon",
+               "Action items (table: who, what, when); Open issues",
+    "review": "Product; Features; Pros; Cons; Price / offers; Who it suits; Verdict; "
+              "Claims to verify",
+    "other": "Whatever sections are most useful for this video",
 }
 
 
-# ---- Output shapes (Gemini inhi me jawab deta hai, parse error nahi aata) ----
+# ---- Output shapes (Gemini answers in these, so there are no parse errors) ----
 class Line(BaseModel):
     time: str
     speaker: str
@@ -153,14 +153,14 @@ _client = None
 def client():
     global _client
     if not API_KEY:
-        raise RuntimeError("GEMINI_API_KEY nahi mili. Free key: https://aistudio.google.com/apikey")
+        raise RuntimeError("GEMINI_API_KEY not found. Get a free key: https://aistudio.google.com/apikey")
     if _client is None:
         _client = genai.Client(api_key=API_KEY)
     return _client
 
 
 def _generate(contents, schema=None, temperature=0.2, media_resolution=None):
-    """Retry + model fallback ke saath call. schema ho to parsed object lautata hai."""
+    """Call with retry + model fallback. Returns a parsed object when a schema is given."""
     config = types.GenerateContentConfig(
         temperature=temperature,
         max_output_tokens=65536,
@@ -184,8 +184,8 @@ def _generate(contents, schema=None, temperature=0.2, media_resolution=None):
             if resp.parsed is not None:
                 return resp.parsed
             reason = resp.candidates[0].finish_reason if resp.candidates else "unknown"
-            raise RuntimeError(f"Jawab adhoora aaya ({reason}). Video chhoti karke try karo.")
-    raise RuntimeError(f"Gemini abhi busy hai, 1-2 minute baad try karo. ({last})")
+            raise RuntimeError(f"Incomplete response ({reason}). Try a shorter video.")
+    raise RuntimeError(f"Gemini is busy right now, try again in 1-2 minutes. ({last})")
 
 
 # ---- Video input ----
@@ -194,15 +194,15 @@ def _ffmpeg():
 
 
 def video_duration(path):
-    """Video ki length seconds me (na mile to 0)."""
+    """Video length in seconds (0 if unknown)."""
     out = subprocess.run([_ffmpeg(), "-i", path], capture_output=True, text=True)
     m = re.search(r"Duration:\s*(\d+):(\d+):([\d.]+)", out.stderr)
     return int(m[1]) * 3600 + int(m[2]) * 60 + float(m[3]) if m else 0
 
 
 def compress_video(path, target_mb=15):
-    """Inline bhejne ke liye chhoti karo. Gemini ~1 frame/sec dekhta hai, isliye
-    fps ghata ke resolution (720p) bachate hain taaki screen ka text padha ja sake."""
+    """Shrink for inline upload. Gemini samples ~1 frame/sec, so we drop fps
+    and keep resolution (720p) so on-screen text stays readable."""
     out_path = path + ".small.mp4"
     dur = video_duration(path)
     if dur > 0:
@@ -221,48 +221,48 @@ def compress_video(path, target_mb=15):
 
 
 def prepare_video(path=None, youtube_url=None, log=print):
-    """Gemini ko dene layak video part banao. Lautata hai (part, cleanup_fn, duration_sec)."""
+    """Build the video part for Gemini. Returns (part, cleanup_fn, duration_sec)."""
     if youtube_url:
-        log("YouTube video Gemini ko di ja rahi hai...")
+        log("Sending YouTube video to Gemini...")
         return types.Part(file_data=types.FileData(file_uri=youtube_url.strip())), (lambda: None), 0
 
     dur = video_duration(path)
-    # 1) File API: poori quality, 2 GB tak
+    # 1) File API: full quality, up to 2 GB
     try:
-        log("Video upload ho rahi hai (poori quality)...")
+        log("Uploading video (full quality)...")
         f = client().files.upload(file=path)
         while f.state.name == "PROCESSING":
             time.sleep(3)
             f = client().files.get(name=f.name)
         if f.state.name == "ACTIVE":
             return f, (lambda: _safe_delete(f.name)), dur
-        log("Upload process nahi hua, dusra tarika try kar rahe hain...")
+        log("Upload was not processed, trying another method...")
     except Exception as e:
-        log(f"Upload nahi hua ({str(e)[:80]}), dusra tarika try kar rahe hain...")
+        log(f"Upload failed ({str(e)[:80]}), trying another method...")
 
-    # 2) Fallback: inline (network File API rok de tab bhi chalta hai)
+    # 2) Fallback: inline (works even if the network blocks the File API)
     send = path
     if os.path.getsize(path) / 1048576 > INLINE_LIMIT_MB:
-        log("Video badi hai, compress ho rahi hai...")
+        log("Video is large, compressing...")
         send = compress_video(path)
     with open(send, "rb") as fh:
         data = fh.read()
     if send != path:
         os.unlink(send)
     if len(data) / 1048576 > 20:
-        raise RuntimeError("Video bahut lambi hai. Chhota part upload karo ya YouTube link do.")
+        raise RuntimeError("Video is too long. Upload a shorter part or use a YouTube link.")
     return types.Part.from_bytes(data=data, mime_type="video/mp4"), (lambda: None), dur
 
 
 def _safe_delete(name):
-    """Upload ki hui video Google se hata do (privacy)."""
+    """Delete the uploaded video from Google (privacy)."""
     try:
         client().files.delete(name=name)
     except Exception:
         pass
 
 
-# ---- Step 1: saboot nikalo ----
+# ---- Step 1: extract evidence ----
 EXTRACT_PROMPT = """
 You are a meticulous video analyst. Watch AND listen to the whole video, start to end.
 Your only job is to capture EVIDENCE, faithfully. Do not summarize, interpret or advise.
@@ -292,7 +292,7 @@ def extract(video_part, duration_sec=0):
 
 
 def evidence_text(ev):
-    """Saboot ko compact text me (step 2 ke prompt ke liye)."""
+    """Evidence as compact text (for the step 2 prompt)."""
     out = [f"Title: {ev.get('title', '')}", f"Duration: {ev.get('duration', '')}",
            f"Spoken language: {ev.get('spoken_language', '')}", "", "SPOKEN:"]
     out += [f"[{l['time']}] {l['speaker']}: {l['text']}" for l in ev.get("transcript", [])] or ["(no speech)"]
@@ -301,8 +301,8 @@ def evidence_text(ev):
     return "\n".join(out)
 
 
-# ---- Step 2: documentation likho ----
-def write_doc(ev, video_type="auto", audience="General", lang="Hinglish", note=""):
+# ---- Step 2: write documentation ----
+def write_doc(ev, video_type="auto", audience="General", lang="English", note=""):
     vtype = ev.get("video_type", "other") if video_type == "auto" else video_type
     prompt = f"""
 You are a senior analyst and technical writer. Below is the complete evidence extracted
@@ -339,7 +339,7 @@ EVIDENCE:
     return _generate([prompt], schema=Doc, temperature=0.3).model_dump()
 
 
-# ---- Extra: transcript translate + video se sawaal ----
+# ---- Extras: transcript translation + ask the video ----
 def translate(lines, lang):
     if not lines:
         return []
@@ -349,7 +349,7 @@ def translate(lines, lang):
     return _generate([prompt], schema=Translated, temperature=0.1).model_dump()["lines"]
 
 
-def ask(record, question, lang="Hinglish"):
+def ask(record, question, lang="English"):
     prompt = f"""
 Answer the question using ONLY this video's evidence below. Answer in {lang}.
 Cite [MM:SS] for facts. If the video does not contain the answer, say so clearly
@@ -363,16 +363,16 @@ EVIDENCE:
     return _generate([prompt], temperature=0.2)
 
 
-# ---- Poora pipeline ----
+# ---- Full pipeline ----
 def analyze(path=None, youtube_url=None, video_type="auto", audience="General",
-            lang="Hinglish", note="", source_name="", log=print):
+            lang="English", note="", source_name="", log=print):
     part, cleanup, dur = prepare_video(path, youtube_url, log)
     try:
-        log("AI video dekh aur sun raha hai (transcript + screen)...")
+        log("AI is watching and listening (transcript + screen)...")
         ev = extract(part, dur)
     finally:
         cleanup()
-    log("Documentation likhi ja rahi hai...")
+    log("Writing documentation...")
     doc = write_doc(ev, video_type, audience, lang, note)
     return {
         "id": uuid.uuid4().hex[:8],
@@ -387,7 +387,7 @@ def analyze(path=None, youtube_url=None, video_type="auto", audience="General",
 
 # ---- Storage ----
 def normalize(rec):
-    """Purane format (pehle version) ki entry ko naye format me lao."""
+    """Convert an entry from the old (v1) format to the new one."""
     if "doc" in rec:
         return rec
     return {
@@ -395,7 +395,7 @@ def normalize(rec):
         "saved_at": rec.get("saved_at", ""),
         "source": rec.get("source_video", ""),
         "settings": {"video_type": rec.get("video_type", "project"), "audience": "General",
-                     "lang": rec.get("lang", "Hinglish"), "note": ""},
+                     "lang": rec.get("lang", "English"), "note": ""},
         "evidence": {"video_type": rec.get("video_type", "project"),
                      "title": rec.get("title") or rec.get("project_name", ""),
                      "spoken_language": rec.get("spoken_language", ""), "duration": "",
@@ -421,7 +421,7 @@ def load_projects():
 
 
 def save_project(rec):
-    """Naya record jodo, ya same id wala update karo."""
+    """Add a new record, or update the one with the same id."""
     projects = [p for p in load_projects() if p["id"] != rec["id"]] + [rec]
     with open(PROJECTS_FILE, "w", encoding="utf-8") as f:
         json.dump(projects, f, ensure_ascii=False, indent=2)
@@ -464,7 +464,7 @@ def to_markdown(rec):
 
 
 def to_html(rec):
-    """Print-ready HTML (browser me khol ke Ctrl+P -> PDF; Word me bhi khulta hai)."""
+    """Print-ready HTML (open in a browser, Ctrl+P -> PDF; also opens in Word)."""
     import markdown
     body = markdown.markdown(to_markdown(rec), extensions=["tables", "fenced_code", "sane_lists"])
     return f"""<!doctype html><html><head><meta charset="utf-8"><title>{rec['doc']['title']}</title>
@@ -483,8 +483,8 @@ pre{{background:#f6f8fa;padding:12px;border-radius:6px;white-space:pre-wrap}}
 # ---- CLI ----
 def main():
     ap = argparse.ArgumentParser(description="Video -> documentation")
-    ap.add_argument("video", help="video file path ya YouTube link")
-    ap.add_argument("--lang", default="Hinglish")
+    ap.add_argument("video", help="video file path or YouTube link")
+    ap.add_argument("--lang", default="English")
     ap.add_argument("--audience", default="General", choices=list(AUDIENCES))
     ap.add_argument("--type", default="auto", choices=list(VIDEO_TYPES))
     ap.add_argument("--note", default="")
@@ -492,7 +492,7 @@ def main():
 
     is_url = a.video.startswith("http")
     if not is_url and not os.path.exists(a.video):
-        sys.exit(f"File nahi mili: {a.video}")
+        sys.exit(f"File not found: {a.video}")
 
     rec = analyze(path=None if is_url else a.video, youtube_url=a.video if is_url else None,
                   video_type=a.type, audience=a.audience, lang=a.lang, note=a.note,
