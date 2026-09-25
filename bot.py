@@ -38,21 +38,39 @@ MODEL = "gemini-flash-latest"                     # free tier, video support
 PROJECTS_FILE = os.path.join(os.path.dirname(__file__), "projects.json")
 
 
-INSTRUCTION = """
+def build_instruction(lang="Hinglish"):
+    """Gemini ke liye instruction. lang = jis bhasha me samjhana hai."""
+    return f"""
 Tum ek senior software architect ho. Tumhe ek video di gayi hai jisme koi
 banda ek project/feature explain ya demo kar raha hai (screen, aawaz, ya dono).
 
 Video ko dhyaan se DEKHO aur SUNO. Fir SIRF ek valid JSON do (aur kuch nahi),
 is exact shape me:
 
-{
+{{
   "project_name": "chhota clear naam",
   "summary": "2-3 line me kya banana hai",
   "requirements": ["point 1", "point 2", "..."],
   "tech_stack": ["suggested tools/languages"],
-  "ultra_prompt": "ek lamba, detail-bhara prompt jise user kisi AI/coder ko de kar poora project shuru kara sake. Isme goal, features, steps, aur output format sab likha ho."
-}
+  "ultra_prompt": "ek lamba, detail-bhara prompt jise user kisi AI/coder ko de kar poora project shuru kara sake. Isme goal, features, steps, aur output format sab likha ho.",
+  "spoken_language": "video me jo bhasha boli gayi (jaise Hindi, English)",
+  "transcript": [
+    {{"time": "MM:SS", "text": "video me jo bola gaya, bilkul waisa hi, usi bhasha me"}}
+  ],
+  "transcript_translated": [
+    {{"time": "MM:SS", "text": "upar wali line ka {lang} me anuvaad"}}
+  ],
+  "speech_explanation": "{lang} me saaf samjhao ki video me aakhir kya bola gaya: main baatein, kya maanga gaya, koi zaroori detail. Point-wise, aasaan bhasha me."
+}}
+
+Rules:
+- transcript me poori boli hui baat likho, kuch chhodo mat. Agar video me koi
+  bola hi nahi, to transcript aur transcript_translated khali list [] rakho.
+- transcript_translated aur speech_explanation hamesha {lang} me hon.
 """
+
+
+INSTRUCTION = build_instruction()
 
 
 def load_projects():
@@ -119,6 +137,11 @@ def main():
     print(f"Summary : {data['summary']}")
     print("\n----------  ULTRA PROMPT (copy karo)  ----------\n")
     print(data["ultra_prompt"])
+    if data.get("transcript"):
+        print("\n----------  VIDEO ME KYA BOLA GAYA  ----------\n")
+        for line in data["transcript"]:
+            print(f"[{line.get('time', '')}] {line.get('text', '')}")
+        print("\n" + data.get("speech_explanation", ""))
     print("\n====================================================")
     print(f"Sab kuch save hua: {PROJECTS_FILE}")
 

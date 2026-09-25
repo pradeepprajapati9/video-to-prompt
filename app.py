@@ -14,7 +14,7 @@ import streamlit as st
 import google.generativeai as genai
 import imageio_ffmpeg
 
-from bot import _load_env, INSTRUCTION, MODEL, PROJECTS_FILE, save_project
+from bot import _load_env, build_instruction, MODEL, PROJECTS_FILE, save_project
 
 # Inline video limit ~20 MB. Isse badi video ko compress karenge.
 COMPRESS_ABOVE_MB = 18
@@ -74,7 +74,7 @@ if not API_KEY:
     st.stop()
 
 
-def analyze(video_bytes, filename, user_note=""):
+def analyze(video_bytes, filename, user_note="", lang="Hinglish"):
     # temp file me save karo
     suffix = os.path.splitext(filename)[1] or ".mp4"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -102,14 +102,14 @@ def analyze(video_bytes, filename, user_note=""):
     model = genai.GenerativeModel(MODEL)
 
     with st.status("AI project samajh raha hai...", expanded=True) as status:
-        prompt = INSTRUCTION
+        prompt = build_instruction(lang)
         if user_note.strip():
             prompt += f"\n\nUser ne ye extra note diya hai, ise dhyaan me rakho:\n{user_note.strip()}"
         # File API ki jagah inline video (usi endpoint se jo chalti hai)
         resp = model.generate_content([
             {"mime_type": "video/mp4", "data": final_bytes},
             prompt,
-        ])
+        ], generation_config={"response_mime_type": "application/json"})
         status.update(label="Ho gaya!", state="complete")
 
     text = resp.text.strip()
@@ -127,9 +127,13 @@ user_note = st.text_area(
     placeholder="Project se related koi extra baat... jaise 'React me chahiye', 'sirf backend', 'mobile app', etc.",
 )
 
+LANGUAGES = ["Hinglish", "Hindi", "English", "Marathi", "Gujarati", "Bengali",
+             "Tamil", "Telugu", "Punjabi", "Urdu", "Spanish", "French", "Arabic"]
+lang = st.selectbox("Video me jo bola gaya, kis bhasha me samjhaun?", LANGUAGES)
+
 if uploaded and st.button("Analyze karo", type="primary"):
     try:
-        data = analyze(uploaded.getvalue(), uploaded.name, user_note)
+        data = analyze(uploaded.getvalue(), uploaded.name, user_note, lang)
     except Exception as e:
         st.error(f"Error: {e}")
         data = None
@@ -151,6 +155,22 @@ if uploaded and st.button("Analyze karo", type="primary"):
 
         st.subheader("🚀 Ultra Prompt (copy karo)")
         st.code(data["ultra_prompt"], language="text")
+
+        st.subheader("🗣️ Video me kya bola gaya")
+        transcript = data.get("transcript", [])
+        if not transcript:
+            st.info("Is video me koi boli hui baat nahi mili.")
+        else:
+            st.markdown(f"**Samjho ({lang}):**")
+            st.write(data.get("speech_explanation", ""))
+
+            translated = data.get("transcript_translated", [])
+            with st.expander(f"Poora transcript — {lang} me"):
+                for line in translated:
+                    st.markdown(f"`{line.get('time', '')}` {line.get('text', '')}")
+            with st.expander(f"Original transcript — {data.get('spoken_language', '')}"):
+                for line in transcript:
+                    st.markdown(f"`{line.get('time', '')}` {line.get('text', '')}")
 
 st.divider()
 st.caption(f"Sab projects yaha save hote hain: {PROJECTS_FILE}")
